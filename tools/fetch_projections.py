@@ -79,6 +79,22 @@ def main():
         out_of_play = set(ro.get("reserve") or []) | set(ro.get("taxi") or [])     # IR / taxi cannot start
         teams[info["owner_id"]] = [p for p in (ro.get("players") or []) if p not in out_of_play]
     needed = {p for ps_ in teams.values() for p in ps_}
+
+    # ---- this week's matchups (home page): who plays whom, by owner id ----
+    rid_owner = {}
+    for ro in sleeper_client.get_rosters(SLEEPER_SEED_LEAGUE_ID):
+        info = owner_map.get("sleeper", {}).get(ro.get("owner_id"))
+        if info:
+            rid_owner[ro["roster_id"]] = info["owner_id"]
+    by_mid = {}
+    try:
+        for e in sleeper_client.get_matchups(SLEEPER_SEED_LEAGUE_ID, first_week) or []:
+            if e.get("matchup_id") is not None and e.get("roster_id") in rid_owner:
+                by_mid.setdefault(e["matchup_id"], []).append(rid_owner[e["roster_id"]])
+    except Exception as e:                                       # noqa: BLE001
+        print(f"   week {first_week} matchups not available ({e}) -- home page section skipped")
+    pairs = [v for _, v in sorted(by_mid.items()) if len(v) == 2]
+    print(f"   week {first_week}: {len(pairs)} matchups")
     print(f"   {len(teams)} rosters, {len(needed)} players")
 
     # ---- projections, one request per week ----
@@ -109,6 +125,7 @@ def main():
         json.dump({"season": season, "fetchedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                    "field": field, "firstWeek": first_week, "lastWeek": last_week,
                    "rosterPositions": league.get("roster_positions") or [],
+                   "matchups": {"week": first_week, "pairs": pairs},
                    "teams": teams, "players": players, "weeks": weeks}, f)
     print(f"Saved {OUT}")
 
